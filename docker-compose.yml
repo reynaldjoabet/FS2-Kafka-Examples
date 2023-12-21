@@ -1,0 +1,166 @@
+version: "3.7"
+services:
+  zookeeper:
+    image: bitnami/zookeeper:3.9.1
+    ports:
+      - "2181:2181"
+    networks:
+     - kafka-networks
+    volumes:
+      - ./kafka/logs/zookeeper:/bitnami/zookeeper
+    environment:
+      ALLOW_ANONYMOUS_LOGIN: "yes"
+  kafka-1:
+    image: bitnami/kafka:3.6.0
+    ports:
+      - "9091:9091"
+    hostname: kafka-1
+    container_name: kafka-1
+    networks:
+      - kafka-networks
+    volumes:
+      - ./kafka/logs/kafka-1:/bitnami/kafka
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_ADVERTISED_PORT: 9091
+      KAFKA_LISTENERS: >-
+        INTERNAL://kafka-1:29092,EXTERNAL://0.0.0.0:9091
+      #INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9091
+      KAFKA_ADVERTISED_LISTENERS: >-
+        INTERNAL://kafka-1:29092,EXTERNAL://localhost:9091
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LOG_SEGMENT_BYTES: 10485760
+    depends_on:
+      - zookeeper
+  kafka-2:
+    image: bitnami/kafka:3.6.0
+    ports:
+      - "9092:9092"
+    hostname: kafka-2
+    container_name: kafka-2
+    networks:
+      - kafka-networks
+    volumes:
+      - ./kafka/logs/kafka-2:/bitnami/kafka
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_ADVERTISED_PORT: 9092
+      KAFKA_LISTENERS: >-
+        INTERNAL://kafka-2:29092,EXTERNAL://0.0.0.0:9092
+      #INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: >-
+        INTERNAL://kafka-2:29092,EXTERNAL://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LOG_SEGMENT_BYTES: 10485760
+    depends_on:
+        - zookeeper
+  kafka-3:
+    image: bitnami/kafka:3.6.0
+    ports:
+      - "9093:9093"
+    hostname: kafka-3
+    container_name: kafka-3
+    networks:
+      - kafka-networks
+    volumes:
+      - ./kafka/logs/kafka-3:/bitnami/kafka
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_ADVERTISED_PORT: 9093
+      KAFKA_LISTENERS: >-
+        INTERNAL://kafka-3:29092,EXTERNAL://0.0.0.0:9093
+      #INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: >-
+        INTERNAL://kafka-3:29092,EXTERNAL://localhost:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LOG_SEGMENT_BYTES: 10485760
+    depends_on:
+      - zookeeper
+  kafka-4:
+    image: bitnami/kafka:3.6.0
+    ports:
+      - "9094:9094"
+    hostname: kafka-4
+    container_name: kafka-4
+    networks:
+      - kafka-networks
+    volumes:
+      - ./kafka/logs/kafka-4:/bitnami/kafka
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_ADVERTISED_PORT: 9094
+      KAFKA_LISTENERS: >-
+        INTERNAL://kafka-4:29092,EXTERNAL://0.0.0.0:9094
+      #INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9094
+      KAFKA_ADVERTISED_LISTENERS: >-
+        INTERNAL://kafka-4:29092,EXTERNAL://localhost:9094
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LOG_SEGMENT_BYTES: 10485760
+    depends_on:
+      - zookeeper
+  kafka-5:
+    image: bitnami/kafka:3.6.0
+    ports:
+      - "9095:9095"
+    hostname: kafka-5
+    container_name: kafka-5
+    networks:
+      - kafka-networks
+    volumes:
+      - ./kafka/logs/kafka-5:/bitnami/kafka
+    environment:
+      KAFKA_CFG_ZOOKEEPER_CONNECT: zookeeper:2181
+      ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_ADVERTISED_PORT: 9095
+      KAFKA_LISTENERS: >-
+        INTERNAL://kafka-5:29092,EXTERNAL://0.0.0.0:9095
+      #INTERNAL://0.0.0.0:29092,EXTERNAL://0.0.0.0:9095
+      KAFKA_ADVERTISED_LISTENERS: >-
+        INTERNAL://kafka-5:29092,EXTERNAL://localhost:9095
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: >-
+        INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_LOG_SEGMENT_BYTES: 10485760
+    depends_on:
+      - zookeeper
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    volumes:
+      - ./kafka/ui/config.yml:/etc/kafkaui/dynamic_config.yaml
+    environment:
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    depends_on:
+      - kafka-1
+      - kafka-2
+      - kafka-3
+      - kafka-4
+      - kafka-5
+    networks:
+      - kafka-networks
+    ports:
+      - '8080:8080'
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider localhost:8080 || exit 1
+      interval: 5s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+networks:
+  kafka-networks:
+    driver: bridge 
+
+  
