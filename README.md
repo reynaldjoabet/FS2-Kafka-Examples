@@ -22,92 +22,68 @@ partition.metadata file contains a version and a topic_id. This topic id is the 
 ### Log file
 This is where the data written by the producers are stored in a binary format. One can view the contents of these files using command-line tools provided by kafka.
 
-`bin/kafka-dump-log.sh --files data/kafka/payments-7/00000000000000000000.log,data/kafka/payments-7/00000000000000000000.index --print-data-log`
-
-
-`Dumping data/kafka/payments-7/00000000000000000000.log`
-
-`Starting offset: 0
+```bash
+bin/kafka-dump-log.sh --files data/kafka/payments-7/00000000000000000000.log,data/kafka/payments-7/00000000000000000000.index --print-data-log
+Dumping data/kafka/payments-7/00000000000000000000.log
+Starting offset: 0
 baseOffset: 0 lastOffset: 0 count: 1 baseSequence: -1 lastSequence: -1 producerId: -1
 producerEpoch: -1 partitionLeaderEpoch: 0 isTransactional: false isControl: false position: 0
 CreateTime: 1672041637310 size: 73 magic: 2 compresscodec: none crc: 456919687 isvalid: true | offset: 0
-CreateTime: 1672041637310 keySize: -1 valueSize: 5 sequence: -1 headerKeys: [] payload: world `
+CreateTime: 1672041637310 keySize: -1 valueSize: 5 sequence: -1 headerKeys: [] payload: world 
+```
 
 `payload` is the actual data that was pushed to kafka. `offset` tells how far the current message is from the zero indexes. `producerId` and `produerEpoch` are used in delivery guarantee semantics
 
 ### Index and Timeindex files
-`bin/kafka-dump-log.sh --files data/kafka/payments-8/00000000000000000000.log,data/kafka/payments-8/00000000000000000000.index --print-data-log
-Dumping data/kafka/payments-8/00000000000000000000.index`
+```bash
+bin/kafka-dump-log.sh --files data/kafka/payments-8/00000000000000000000.log,data/kafka/payments-8/00000000000000000000.index --print-data-log
+Dumping data/kafka/payments-8/00000000000000000000.index
+```
 
-`offset: 33 position: 4482`
-
-`offset: 68 position: 9213`
-
-`offset: 100 position: 13572`
-
-`offset: 142 position: 18800`
-
-`offset: 175 position: 23042`
-
-`offset: 214 position: 27777`
-
-`offset: 248 position: 32165`
-
-`offset: 279 position: 36665`
-
-`offset: 313 position: 40872`
-
-`offset: 344 position: 45005`
-
-`offset: 389 position: 49849`
-
-`offset: 422 position: 54287`
-
-`offset: 448 position: 58402`
-
-`offset: 485 position: 62533`
+```bash
+offset: 33 position: 4482
+offset: 68 position: 9213
+offset: 100 position: 13572
+offset: 142 position: 18800
+offset: 175 position: 23042
+offset: 214 position: 27777
+offset: 248 position: 32165
+offset: 279 position: 36665
+offset: 313 position: 40872
+offset: 344 position: 45005
+offset: 389 position: 49849
+offset: 422 position: 54287
+offset: 448 position: 58402
+offset: 485 position: 62533
+ ```
 
 As we see from the above output, the `index` file stores the offset and its position of it in the ``.log` file. Why is it needed? We know that consumers process messages sequentially. When a consumer asks for a message, kafka needs to fetch it from the log i.e. it needs to perform a disk I/O. Imagine, kafka reading each log file line by line to find an offset. It takes `O(n)` (where n is the number of lines in the file) time and latency of disk I/O. It will become a bottleneck when the log files are of gigabytes size. So, to optimize it, kafka stores the offset to position mapping in the `.index` file so that if a consumer asks for any arbitrary offset it simply does a binary search on the `.index` file in the `O(log n)` time and goes to the .log file and performs the binary search again.
-
 
 Let’s take an example, say a consumer is reading 190th offset. Firstly, the kafka broker reads the index file (refer to the above log) and performs a binary search, and either finds the exact offset or the closest to it. In this case, it finds offset as 175 and its position as 23042. Then, it goes to the .log file and performs the binary search again given the fact that the `.log` the file is an append-only data structure stored in ascending order of offsets.
 
 Let’s look at the `.timeindex` file
-`bin/kafka-dump-log.sh --files data/kafka/payments-8/00000000000000000000.timeindex --print-data-log`
+```bash
+bin/kafka-dump-log.sh --files data/kafka/payments-8/00000000000000000000.timeindex --print-data-log
 
-`Dumping data/kafka/payments-8/00000000000000000000.timeindex`
+Dumping data/kafka/payments-8/00000000000000000000.timeindex
 
-`timestamp: 1672131856604 offset: 33`
-
-`timestamp: 1672131856661 offset: 68`
-
-`timestamp: 1672131856701 offset: 100`
-
-`timestamp: 1672131856738 offset: 142`
-
-`timestamp: 1672131856772 offset: 175`
-
-`timestamp: 1672131856816 offset: 213`
-
-`timestamp: 1672131856862 offset: 247`
-
-`timestamp: 1672131856901 offset: 279`
-
-`timestamp: 1672131856930 offset: 312`
-
-`timestamp: 1672131856981 offset: 344`
-
-`timestamp: 1672131857029 offset: 388`
-
-`timestamp: 1672131857076 offset: 419`
-
-`timestamp: 1672131857102 offset: 448`
-
-`timestamp: 1672131857147 offset: 484`
-
-`timestamp: 1672131857185 offset: 517`
-
-`timestamp: 1672131857239 offset: 547`
+timestamp: 1672131856604 offset: 33
+timestamp: 1672131856661 offset: 68
+timestamp: 1672131856701 offset: 100
+timestamp: 1672131856738 offset: 142
+timestamp: 1672131856772 offset: 175
+timestamp: 1672131856816 offset: 213
+timestamp: 1672131856862 offset: 247
+timestamp: 1672131856901 offset: 279
+timestamp: 1672131856930 offset: 312
+timestamp: 1672131856981 offset: 344
+timestamp: 1672131857029 offset: 388
+timestamp: 1672131857076 offset: 419
+timestamp: 1672131857102 offset: 448
+timestamp: 1672131857147 offset: 484
+timestamp: 1672131857185 offset: 517
+timestamp: 1672131857239 offset: 547
+```
 
 As we see from the above result, `.timeindex` the file stores the mapping between the epoch timestamp and the offset in the `.index` file. When the consumer wants to replay the event based on the timestamp, kafka first finds the offset by doing a binary search in the `.timeindex` file, find the offset, and finds the position by doing a binary search on the `.index` file.
 
@@ -183,18 +159,18 @@ The session.timeout.ms property specifies the maximum amount of time in millisec
 The heartbeat.interval.ms property specifies the interval in milliseconds between heartbeat checks to the consumer group coordinator to indicate that the consumer is active and connected. The heartbeat interval must be lower, usually by a third, than the session timeout interval
 
 `Coordinator` — Manages group membership, offsets
-` public class KafkaConsumer<K, V> implements Consumer<K, V> {
+```java 
+public class KafkaConsumer<K, V> implements Consumer<K, V> {
     private final ConsumerCoordinator coordinator;
-}`
+}
 
-
-`final class Assignment {
+final class Assignment {
         private List<TopicPartition> partitions;
         private ByteBuffer userData;
-}`
+}
 
 
-`/**
+/**
  * This is used to describe per-partition state in the MetadataResponse.
  */
 public class PartitionInfo {
@@ -204,15 +180,17 @@ public class PartitionInfo {
     private final Node[] replicas;
     private final Node[] inSyncReplicas;
     private final Node[] offlineReplicas;
-}`
+}
 ## Producer
-`public final class TopicPartition implements Serializable {
+public final class TopicPartition implements Serializable {
     private final int partition;
     private final String topic;
-    }`
+    }
+```
 A TopicPartition is made up of a topic name and partition number
 
-`// This is used to describe per-partition state in the MetadataResponse
+```java
+// This is used to describe per-partition state in the MetadataResponse
     public static class PartitionMetadata {
         public final TopicPartition topicPartition;
         public final Errors error;
@@ -221,28 +199,32 @@ A TopicPartition is made up of a topic name and partition number
         public final List<Integer> replicaIds;
         public final List<Integer> inSyncReplicaIds;
         public final List<Integer> offlineReplicaIds;
-    }`
+    }
+```
 we have this in the MetadataCache
 ` private final Map<TopicPartition, PartitionMetadata> metadataByPartition;`
 
 
-` * Per topic info.
+```java
+* Per topic info.
     private static class TopicInfo {
         public final ConcurrentMap<Integer /*partition*/, Deque<ProducerBatch>> batches = new CopyOnWriteMap<>();
         public final BuiltInPartitioner builtInPartitioner;
-    }`
+    }
 
-
-` public class RecordAccumulator {  
+public class RecordAccumulator {  
     private final ConcurrentMap<String /*topic*/, TopicInfo> topicInfoMap = new CopyOnWriteMap<>();
-}`
+}
+```
 
 RecordAccumulator Accumulates records and groups them by topic- partition into batches. A batch of unsent records is maintained in the buffer memory. This also helps in compression
 
-`public class KafkaProducer<K, V> implements Producer<K, V> {
+```java
+public class KafkaProducer<K, V> implements Producer<K, V> {
    private final ProducerMetadata metadata;
     private final RecordAccumulator accumulator; 
-}`
+}
+```
 The request Queue is important as it maintains the order of messages sent to kafka
 
 ## Consumer Group
@@ -277,8 +259,7 @@ At any time a single broker will the leader for a partition. That broker will be
 
 
 ### FS-Kafka
-for Kafka, Chunk[A] => F[Chunk[B]] or Chunk[A] => F[Unit] are optimal 
-
+for `Kafka, Chunk[A] => F[Chunk[B]] or Chunk[A] => F[Unit]` are optimal 
 
 the advantages of Chunk for this scenario are:
 you can write the business logic without looking at the offsets
@@ -317,8 +298,6 @@ Changes in group membership will trigger consumer group rebalances. During rebal
 
 When we instantiate a consumer group, Kafka also creates the group coordinator. The group coordinator regularly receives requests from the consumers, known as heartbeats. If a consumer stops sending heartbeats, the coordinator assumes that the consumer has either left the group or crashed. That’s one possible trigger for a partition rebalance.
 The first consumer who requests the group coordinator to join the group becomes the group leader. When a rebalance occurs for any reason, the group leader receives a list of the group members from the group coordinator. Then, the group leader reassigns the partitions among the consumers in that list using a customizable strategy set in the partition.assignment.strategy configuration.
-
-
 
 
 ##Bootstrapping
@@ -445,3 +424,36 @@ When a consumer starts, it sends a first FindCoordinator request to obtain the K
 
 
 [understanding-kafka-partition-assignment](https://medium.com/streamthoughts/understanding-kafka-partition-assignment-strategies-and-how-to-write-your-own-custom-assignor-ebeda1fc06f3)
+
+### Subscribing to topics
+Kafka Consumer offers two ways for subscribing to the topics: via subscribe() and assign() methods. Each has a different set of supported features.
+
+[kafka-consumers-internals](https://blog.developer.adobe.com/exploring-kafka-consumers-internals-b0b9becaa106)
+
+
+##  KRaft
+In the new architecture, the controller nodes are a Raft quorum that manages the log of metadata events. This log contains information about each change to the cluster metadata. Everything that is currently stored in ZooKeeper, such as topics, partitions, ISRs, configurations, and so on, will be stored in this log.
+
+Using the Raft algorithm, the controller nodes will elect a leader from among themselves, without relying on any external system. The leader of the metadata log is called the active controller. The active controller handles all RPCs made from the brokers. The follower controllers replicate the data that is written to the active controller and serve as hot standbys if the active controller should fail. Because the controllers will now all track the latest state, controller failover will not require a lengthy reloading period in which we transfer all the state to the new controller.
+Instead of the controller pushing out updates to the other brokers, those brokers will fetch updates from the active controller via a new MetadataFetch API. Similar to a fetch request, brokers will track the offset of the latest metadata change they fetched and will only request newer updates from the controller. Brokers will persist the metadata to disk, which will allow them to start up quickly, even with millions of partitions.
+
+Brokers will register with the controller quorum and will remain registered until unregistered by an admin, so once a broker shuts down, it is offline but still registered. Brokers that are online but are not up-to-date with the latest metadata will be fenced and will not be able to serve client requests. The new fenced state will prevent cases where a client produces events to a broker that is no longer a leader but is too out-of-date to be aware that it isn’t a leader.
+
+Replication is critical because it is the way Kafka guarantees availability and durability when individual nodes inevitably fail.
+
+
+
+# Producer
+![Alt text](image-6.png)
+[telematics-tracking-part2](https://chollinger.com/blog/2022/09/tiny-telematics-tracking-my-trucks-location-offline-with-a-raspberry-pi-redis-kafka-and-flink-part-2/)
+[telematics-tracking-part1](https://chollinger.com/blog/2022/08/tiny-telematics-tracking-my-trucks-location-offline-with-a-raspberry-pi-redis-kafka-and-flink-part-1/)
+
+[fs2,cats effect, refined, fs-kafka](https://chollinger.com/blog/2022/06/functional-programming-concepts-i-actually-like-a-bit-of-praise-for-scala-for-once/)
+
+[0.0.0.0](https://www.youtube.com/watch?v=my2vBYZ1RFw)
+
+[fs2-kafka-in-real-world-part-1](https://ayushm4489.medium.com/fs2-kafka-in-real-world-part-1-a7dfc65b995b)
+
+[fs2-kafka-in-real-world-part-2](https://ayushm4489.medium.com/fs2-kafka-in-real-world-part-2-831891ee6907)
+
+[scala3-fs2](https://github.com/PendaRed/scala3-fs2/tree/main/src/main/scala/com/jgibbons/fs2/c)

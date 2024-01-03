@@ -43,11 +43,11 @@ object LagAnalyzerService {
   val kafkaAdminClient: Stream[IO, KafkaAdminClient[IO]] =
     KafkaAdminClient.stream[IO](adminClientSettings)
 
-  def getLags(groupId: String): Stream[IO,Map[TopicPartition,Long]] =
+  def getLags(groupId: String): Stream[IO, Map[TopicPartition, Long]] =
     for {
       consumer <- KafkaConsumer
         .stream(consumerSettings)
-      topicPartitionoffsetAndMetadata <- kafkaAdminClient.evalMap(
+      topicPartitionoffsetAndMetadata <- kafkaAdminClient.parEvalMap(25)(
         _.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata
       )
 
@@ -63,7 +63,9 @@ object LagAnalyzerService {
 
 //The only thing left for finding the consumer group lag is a way of getting the end offset values. For this, we can use the endOffsets() method of the KafkaConsumer class.
 
-  def getProducerOffsets(consumerGrpOffset: Map[TopicPartition, Long]): Map[TopicPartition,Long] =
+  def getProducerOffsets(
+      consumerGrpOffset: Map[TopicPartition, Long]
+  ): Map[TopicPartition, Long] =
     consumerGrpOffset.map { case (topicPartition, _) =>
       topicPartition -> topicPartition.partition().toLong
     }
@@ -73,24 +75,22 @@ object LagAnalyzerService {
   def computeLags(
       consumerGrpOffsets: Map[TopicPartition, Long],
       producerOffsets: Map[TopicPartition, Long]
-  ): Map[TopicPartition,Long] =
+  ): Map[TopicPartition, Long] =
     consumerGrpOffsets.flatMap { case (topicPartition, cosnumerOffset) =>
       producerOffsets.map { case (topicPartition1, producerOffset) =>
         topicPartition -> math.abs((producerOffset - cosnumerOffset))
       }
     }
-    
 
-    //Kafka provides a property “auto.offset.reset” that indicates what should be done when there’s no initial offset in Kafka or if the current offset doesn’t exist anymore on the server
-    //Since we want to read from the beginning of the Kafka topic, we set the value of the “auto.offset.reset” property to “earliest”:
+  // Kafka provides a property “auto.offset.reset” that indicates what should be done when there’s no initial offset in Kafka or if the current offset doesn’t exist anymore on the server
+  // Since we want to read from the beginning of the Kafka topic, we set the value of the “auto.offset.reset” property to “earliest”:
 
-    val consumerFromBeginning=KafkaConsumer
-        .stream(consumerSettings)
-        //.evalMap(_.seekToBeginning(List.empty[TopicPartition]))//This method accepts a collection of TopicPartition and points the offset of the consumer to the beginning of the partition
-        //we pass the value of KafkaConsumer.assignment() to the seekToBeginning() method. The KafkaConsumer.assignment() method returns the set of partitions currently assigned to the consumer.
-        .evalMap(consumer=>consumer.assignment.flatMap(consumer.seekToBeginning(_)))
-      
+  val consumerFromBeginning = KafkaConsumer
+    .stream(consumerSettings)
+    // .evalMap(_.seekToBeginning(List.empty[TopicPartition]))//This method accepts a collection of TopicPartition and points the offset of the consumer to the beginning of the partition
+    // we pass the value of KafkaConsumer.assignment() to the seekToBeginning() method. The KafkaConsumer.assignment() method returns the set of partitions currently assigned to the consumer.
+    .parEvalMap(25)(consumer =>
+      consumer.assignment.flatMap(consumer.seekToBeginning(_))
+    )
 
-
-    
 }
