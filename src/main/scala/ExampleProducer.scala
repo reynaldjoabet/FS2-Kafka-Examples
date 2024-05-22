@@ -145,8 +145,7 @@ object ExampleProducer {
 
   // kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic test
 
-
-  //https://www.baeldung.com/java-apache-kafka-get-last-n-messages
+  // https://www.baeldung.com/java-apache-kafka-get-last-n-messages
 //Get the Number of Messages in an Apache Kafka Topic
 //A Kafka topic may have multiple partitions.
 //Our technique should make sure we’ve counted the number of messages from every partition.

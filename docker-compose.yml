@@ -11,7 +11,7 @@ services:
     environment:
       ALLOW_ANONYMOUS_LOGIN: "yes"
   kafka-1:
-    image: bitnami/kafka:3.6.0
+    image: bitnami/kafka:latest
     ports:
       - "9091:9091"
     hostname: kafka-1
@@ -33,10 +33,11 @@ services:
         INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_LOG_SEGMENT_BYTES: 10485760
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
     depends_on:
       - zookeeper
   kafka-2:
-    image: bitnami/kafka:3.6.0
+    image: bitnami/kafka:latest
     ports:
       - "9092:9092"
     hostname: kafka-2
@@ -58,10 +59,11 @@ services:
         INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_LOG_SEGMENT_BYTES: 10485760
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
     depends_on:
         - zookeeper
   kafka-3:
-    image: bitnami/kafka:3.6.0
+    image: bitnami/kafka:latest
     ports:
       - "9093:9093"
     hostname: kafka-3
@@ -83,10 +85,11 @@ services:
         INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_LOG_SEGMENT_BYTES: 10485760
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
     depends_on:
       - zookeeper
   kafka-4:
-    image: bitnami/kafka:3.6.0
+    image: bitnami/kafka:latest
     ports:
       - "9094:9094"
     hostname: kafka-4
@@ -108,10 +111,11 @@ services:
         INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_LOG_SEGMENT_BYTES: 10485760
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
     depends_on:
       - zookeeper
   kafka-5:
-    image: bitnami/kafka:3.6.0
+    image: bitnami/kafka:latest
     ports:
       - "9095:9095"
     hostname: kafka-5
@@ -133,31 +137,32 @@ services:
         INTERNAL:PLAINTEXT,EXTERNAL:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
       KAFKA_LOG_SEGMENT_BYTES: 10485760
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: true
     depends_on:
       - zookeeper
-  kafka-ui:
-    container_name: kafka-ui
-    image: provectuslabs/kafka-ui:latest
-    volumes:
-      - ./kafka/ui/config.yml:/etc/kafkaui/dynamic_config.yaml
-    environment:
-      DYNAMIC_CONFIG_ENABLED: 'true'
-    depends_on:
-      - kafka-1
-      - kafka-2
-      - kafka-3
-      - kafka-4
-      - kafka-5
-    networks:
-      - kafka-networks
-    ports:
-      - '8080:8080'
-    healthcheck:
-      test: wget --no-verbose --tries=1 --spider localhost:8080 || exit 1
-      interval: 5s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
+  # kafka-ui:
+  #   container_name: kafka-ui
+  #   image: provectuslabs/kafka-ui:latest
+  #   volumes:
+  #     - ./kafka/ui/config.yml:/etc/kafkaui/dynamic_config.yaml
+  #   environment:
+  #     DYNAMIC_CONFIG_ENABLED: 'true'
+  #   depends_on:
+  #     - kafka-1
+  #     - kafka-2
+  #     - kafka-3
+  #     - kafka-4
+  #     - kafka-5
+  #   networks:
+  #     - kafka-networks
+  #   ports:
+  #     - '8080:8080'
+  #   healthcheck:
+  #     test: wget --no-verbose --tries=1 --spider localhost:8080 || exit 1
+  #     interval: 5s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 30s
 
 networks:
   kafka-networks:
