@@ -1,18 +1,22 @@
+import scala.concurrent.duration._
+
 import cats.effect._
 import cats.syntax.all._
-import scala.concurrent.duration._
+import cats.Functor
+import fs2._
 import fs2.kafka.{KafkaConsumer, _}
 import fs2.kafka.consumer._
-import cats.Functor
-import org.typelevel.log4cats.Logger
+
+import org.apache.kafka.clients.consumer.ConsumerConfig
 import org.typelevel.log4cats.syntax._
-import fs2._
+import org.typelevel.log4cats.Logger
 
 final class Consumer[F[_]: Async: Logger](
-    consumer: KafkaConsumer[F, String, String]
+  consumer: KafkaConsumer[F, String, String]
 ) {
+
   def consume(
-      topicName: String
+    topicName: String
   )(fn: Vector[String] => F[Unit]): Stream[F, Unit] = {
     Stream(consumer)
       .covary[F]
@@ -31,18 +35,39 @@ final class Consumer[F[_]: Async: Logger](
       .through(commitBatchWithin[F](500, 15.seconds))
 
   }
+
 }
 
 object Consumer {
+
   def resource[F[_]: Async: Logger](
-      bootstrapServers: String,
-      groupId: String
+    bootstrapServers: String,
+    groupId: String
   ): Resource[F, Consumer[F]] = {
     val settings =
       ConsumerSettings[F, String, String]
         .withAutoOffsetReset(AutoOffsetReset.Earliest)
         .withBootstrapServers(bootstrapServers)
         .withGroupId(groupId)
+        .withAllowAutoCreateTopics(true)
+        // .withClientId()
+        // .withCustomBlockingContext(scala.concurrent.ExecutionContext.global)
+        .withProperty(
+          "partition.assignment.strategy",
+          "org.apache.kafka.clients.consumer.RangeAssignor"
+        )
+        .withProperty(
+          ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
+          "org.apache.kafka.clients.consumer.RoundRobinAssignor"
+        )
+        .withProperty(
+          ConsumerConfig.PARTITION_ASSIGNMENT_STRATEGY_CONFIG,
+          "org.apache.kafka.clients.consumer.StickyAssignor"
+        )
+        .withProperty(
+          "partition.assignment.strategy",
+          "org.apache.kafka.clients.consumer.CooperativeStickyAssignor"
+        )
 
     // TODO: graceful shutdown: https://fd4s.github.io/fs2-kafka/docs/consumers#graceful-shutdown
     KafkaConsumer.resource[F, String, String](settings).map(new Consumer(_))

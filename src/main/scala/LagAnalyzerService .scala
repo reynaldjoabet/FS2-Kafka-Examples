@@ -1,33 +1,36 @@
-import fs2.kafka.admin.MkAdminClient
+import scala.concurrent.duration._
+
+import cats.effect
 import cats.effect.IO
 import fs2._
-import fs2.kafka.KafkaAdminClient
 import fs2.kafka._
-import org.apache.kafka.common.TopicPartition
-import fs2.kafka.ConsumerSettings
+import fs2.kafka.admin.MkAdminClient
 import fs2.kafka.AutoOffsetReset
-import scala.concurrent.duration._
-import cats.effect
+import fs2.kafka.ConsumerSettings
+import fs2.kafka.KafkaAdminClient
+
+import org.apache.kafka.common.TopicPartition
 
 object LagAnalyzerService {
 
   // val keyDerializer = Deserializer.int[IO]
   // val valueDerializer = Deserializer.int[IO]
-  val consumerSettings = ConsumerSettings[IO, Int, Int]
-    // .withAutoCommitInterval(5.seconds)
-    .withAutoOffsetReset(AutoOffsetReset.Earliest)
-    .withHeartbeatInterval(20.seconds)
-    .withClientId("client1")
-    .withBootstrapServers("localhost:9092,localhost:9093,localhost:9094")
-    .withEnableAutoCommit(false)
-    .withGroupId("groupid")
-    .withMaxPollRecords(12)
-    // .withRecordMetadata(_.partition.toString())
-    .withPollInterval(50.milliseconds)
-    .withHeartbeatInterval(3.seconds)
-    .withMaxPollInterval(
-      10.seconds
-    )
+  val consumerSettings: ConsumerSettings[IO, Int, Int] =
+    ConsumerSettings[IO, Int, Int]
+      // .withAutoCommitInterval(5.seconds)
+      .withAutoOffsetReset(AutoOffsetReset.Earliest)
+      .withHeartbeatInterval(20.seconds)
+      .withClientId("client1")
+      .withBootstrapServers("localhost:9092,localhost:9093,localhost:9094")
+      .withEnableAutoCommit(false)
+      .withGroupId("groupid")
+      .withMaxPollRecords(12)
+      // .withRecordMetadata(_.partition.toString())
+      .withPollInterval(50.milliseconds)
+      .withHeartbeatInterval(3.seconds)
+      .withMaxPollInterval(
+        10.seconds
+      )
 
   // Consumer lag is simply the delta between the consumer’s last committed offset and the producer’s end offset in the log.
   // In other words, the consumer lag measures the delay between producing and consuming messages in any producer-consumer system.
@@ -45,17 +48,18 @@ object LagAnalyzerService {
 
   def getLags(groupId: String): Stream[IO, Map[TopicPartition, Long]] =
     for {
-      consumer <- KafkaConsumer
-        .stream(consumerSettings)
-      topicPartitionoffsetAndMetadata <- kafkaAdminClient.parEvalMap(25)(
-        _.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata
-      )
+      consumer <- KafkaConsumer.stream(consumerSettings)
+      topicPartitionoffsetAndMetadata <-
+        kafkaAdminClient.parEvalMap(25)(
+          _.listConsumerGroupOffsets(groupId).partitionsToOffsetAndMetadata
+        )
 
       consumerGrpOffsets = topicPartitionoffsetAndMetadata.map {
-        case (topicPartition, offsetAndMetadata) =>
-          topicPartition -> offsetAndMetadata.offset()
-      }
-      topicPartitions = topicPartitionoffsetAndMetadata.map(_._1).toSet
+                             case (topicPartition, offsetAndMetadata) =>
+                               topicPartition -> offsetAndMetadata.offset()
+                           }
+
+      topicPartitions  = topicPartitionoffsetAndMetadata.map(_._1).toSet
       producerOffsets <- Stream.eval(consumer.endOffsets(topicPartitions))
     } yield computeLags(consumerGrpOffsets, producerOffsets)
 
@@ -64,7 +68,7 @@ object LagAnalyzerService {
 //The only thing left for finding the consumer group lag is a way of getting the end offset values. For this, we can use the endOffsets() method of the KafkaConsumer class.
 
   def getProducerOffsets(
-      consumerGrpOffset: Map[TopicPartition, Long]
+    consumerGrpOffset: Map[TopicPartition, Long]
   ): Map[TopicPartition, Long] =
     consumerGrpOffset.map { case (topicPartition, _) =>
       topicPartition -> topicPartition.partition().toLong
@@ -73,12 +77,12 @@ object LagAnalyzerService {
   // Finally, let’s write a method that uses consumer offsets and producer’s endoffsets to generate the lag for each TopicPartition:
 
   def computeLags(
-      consumerGrpOffsets: Map[TopicPartition, Long],
-      producerOffsets: Map[TopicPartition, Long]
+    consumerGrpOffsets: Map[TopicPartition, Long],
+    producerOffsets: Map[TopicPartition, Long]
   ): Map[TopicPartition, Long] =
     consumerGrpOffsets.flatMap { case (topicPartition, cosnumerOffset) =>
       producerOffsets.map { case (topicPartition1, producerOffset) =>
-        topicPartition -> math.abs((producerOffset - cosnumerOffset))
+        topicPartition -> math.abs(producerOffset - cosnumerOffset)
       }
     }
 
@@ -89,8 +93,6 @@ object LagAnalyzerService {
     .stream(consumerSettings)
     // .evalMap(_.seekToBeginning(List.empty[TopicPartition]))//This method accepts a collection of TopicPartition and points the offset of the consumer to the beginning of the partition
     // we pass the value of KafkaConsumer.assignment() to the seekToBeginning() method. The KafkaConsumer.assignment() method returns the set of partitions currently assigned to the consumer.
-    .parEvalMap(25)(consumer =>
-      consumer.assignment.flatMap(consumer.seekToBeginning(_))
-    )
+    .parEvalMap(25)(consumer => consumer.assignment.flatMap(consumer.seekToBeginning(_)))
 
 }

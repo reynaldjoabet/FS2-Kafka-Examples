@@ -971,10 +971,47 @@ When a consumer instance starts up it sends a FindCoordinator request that inclu
  After the group leader receives the complete member list and subscription information, it will use its configured partitioner to assign the partitions in the subscription to the group members. With that done, the leader will send a SyncGroupRequest to the coordinator, passing in its memberId and the group assignments provided by its partitioner. The other consumers will make a similar request but will only pass their memberId. The coordinator will use the assignment information given to it by the group leader to return the actual assignments to each consumer. Now the consumers can begin their real work of consuming and processing data.
 
 
+Specify hostname as 0.0.0.0 to bind to all interfaces
+Leave hostname empty to bind to default interface
+```java
+   public static final String LISTENERS_DEFAULT = "PLAINTEXT://:9092";
+```
+CONTROL_PLANE_LISTENER_NAME:
+Name of listener used for communication between controller and brokers.
+
+
+`listeners` tells the Kafka process what physical network interface it should open a listening socket to.
+A physical network adapter should have 1 or more ip addresses assigned to it.
+So `listeners` just tells the Kafka process which network adapter and port number to use to initialize a listening socket.
+
+A socket is bound to a port number so that the TCP layer can identify the application that data is destined to be sent to.
+
+An endpoint is a combination of an IP address and a port number. Every TCP connection can be uniquely identified by its two endpoints. That way you can have multiple connections between your host and the server.
+
+Each IP-based socket on a system is unique, and is identified by a combination of IP address, the protocol that the socket is using (TCP or UDP), and a numeric port number, which is mapped to the application that is using the socket by the operating system
+
+When two network devices communicate, they do so by sending packets to each other. Each packet received by a receiver device contains a port number that uniquely identifies the process where the packet needs to be sent
+
+A socket consists of the IP address of a system and the port number of a program within the system
+
+
+Each listener needs a port number and network interface to bind to. The network interface is determined by an ip address
+
+Because we have two listeners, one which is intended for use for internal inter-broker communication, and one which is intdended for use for external traffic, we must set the `inter.broker.listener.name` parameter.
+
+`inter.broker.listener.name=INTERNAL`
+
+brokers do communicate with each other( replicas are reading the messages from the leaders, controller is informing other brokers about changes)
+The address on which you reach a broker depends on the network used. If you’re connecting to the broker from an internal network it’s going to be a different host/IP than when connecting externally. There are basically three scenarios that arise:
 
 
 
+Kafka brokers can be configured to use multiple listeners. Each listener can be used to listen on a different port or network interface and can have different configuration. Listeners are configured in the listeners property in the configuration file. The `listeners` property contains a list of listeners with each listener configured as `<listenerName>://<hostname>:_<port>_`. When the hostname value is empty, Kafka will use `java.net.InetAddress.getCanonicalHostName()` as hostname
 
+
+The names of the listeners have to match the names of the listeners from the listeners property.
+[kafka-primer-for-docker-how-to-setup](https://levelup.gitconnected.com/kafka-primer-for-docker-how-to-setup-kafka-start-messaging-and-monitor-broker-metrics-in-docker-b4e018e205d1)
+[kafka-listeners-and-advertised-listeners-](https://medium.com/@fintechdevlondon/kafka-listeners-and-advertised-listeners-what-are-they-and-what-do-they-do-9b004e2eb93d)
  [consumer-group-protocol](https://developer.confluent.io/courses/architecture/consumer-group-protocol/)
 
  [architecture/broker](https://developer.confluent.io/courses/architecture/broker/)
@@ -985,3 +1022,896 @@ When a consumer instance starts up it sends a FindCoordinator request that inclu
 
 
 
+
+
+```scala
+type ProducerRecords[K, V] = Chunk[ProducerRecord[K, V]]
+
+
+  type ProducerResult[K, V] = Chunk[(ProducerRecord[K, V], RecordMetadata)]
+
+    
+abstract class KafkaProducer[F[_], K, V] {
+
+  /**
+    * Produces the specified [[ProducerRecords]] in two steps: the first effect puts the records in
+    * the buffer of the producer, and the second effect waits for the records to send.<br><br>
+    *
+    * It's possible to `flatten` the result from this function to have an effect which both sends
+    * the records and waits for them to finish sending.<br><br>
+    *
+    * Waiting for individual records to send can substantially limit performance. In some cases,
+    * this is necessary, and so we might want to consider the following alternatives.<br><br>
+    *
+    *   - Wait for the produced records in batches, improving the rate at which records are
+    *     produced, but loosing the guarantee where `produce >> otherAction` means `otherAction`
+    *     executes after the record has been sent.<br>
+    *   - Run several `produce.flatten >> otherAction` concurrently, improving the rate at which
+    *     records are produced, and still have `otherAction` execute after records have been sent,
+    *     but losing the order of produced records.
+    */
+  def produce(
+    records: ProducerRecords[K, V]
+  ): F[F[ProducerResult[K, V]]]
+
+}
+```
+
+You need to tell Kafka how the brokers can reach each other but also make sure that external clients (producers/consumers) can reach the broker they need to reach.
+
+```bash
+ KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-1:29092,EXTERNAL://localhost:9092
+
+```
+Using the above setting, the below does not work because `docker exec` runs the command within the container and inside, `localhost` is the container and not the docker host
+`docker exec` tells Docker that we want to 
+Execute a command in a running container
+
+```bash
+docker exec broker-2 kafka-topics --create --topic my-topic --bootstrap-server localhost:9092 --partitions 3 --replication-factor 3
+```
+However, any of the below works
+```bash
+# only for this container
+docker exec broker-2 kafka-topics --create --topic my-topic --bootstrap-server localhost:29092 --partitions 3 --replication-factor 3
+
+# for all containers
+docker exec broker-2 kafka-topics --create --topic my-topic --bootstrap-server containername:29092 --partitions 3 --replication-factor 3
+
+docker exec broker-2 kafka-topics --create --topic mytopic --bootstrap-server broker-1:29092,broker-3:29093,broker-4:29094,broker-5:29094 --partitions 3 --replication-factor 3
+
+```
+
+```bash
+docker exec -it broker-1 bash
+# then ping any broker
+ping -c 4 broker-4
+
+######  Result
+--- broker-4 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3028ms
+rtt min/avg/max/mdev = 0.067/0.477/1.170/0.423 ms
+
+
+### Can also ping ip address
+ping -c 4 192.168.32.4
+
+
+####
+--- 192.168.32.4 ping statistics ---
+4 packets transmitted, 4 received, 0% packet loss, time 3077ms
+rtt min/avg/max/mdev = 0.099/0.948/3.007/1.197 ms
+```
+the below works as localhost is the docker host
+```bash
+kcat -b localhost:9092 -G mygroup mytopic my-topic
+
+kcat -L -b localhost:9092
+```
+ information about the bridge network is listed, including the IP address of the gateway between the Docker host and the bridge network (172.17.0.1)
+
+ The `max.partition.fetch.bytes` in Kafka determines the largest amount of data that a consumer can fetch from a single partition in a single request.
+
+
+ A listener is a combination of:
+
+- Host/IP
+- Port
+- Protocol
+
+KAFKA_LISTENERS:This might be an IP address associated with a given network interface on a machine. The default is 0.0.0.0, which means listening on all interfaces.
+
+KAFKA_ADVERTISED_LISTENERS is a comma-separated list of listeners with their host/IP and port. This is the metadata that’s passed back to clients.
+
+Kafka brokers communicate between themselves, usually on the internal network (e.g., Docker network, AWS VPC, etc.). To define which listener to use, specify KAFKA_INTER_BROKER_LISTENER_NAME(inter.broker.listener.name). The host/IP used must be accessible from the broker machine to others
+
+`inter.broker.listener.name` must be a listener name defined in advertised.listeners
+
+the below won't work as 
+
+
+```bash
+##Controller 4's connection to broker broker-2:29092 (id: 2 rack: null) was unsuccessful 
+##Controller 4's connection to broker broker-4:29092 (id: 4 rack: null) was unsuccessful
+## Controller 4's connection to broker broker-1:29092 (id: 1 rack: null) was unsuccessful
+## Controller 4's connection to broker broker-5:29092 (id: 5 rack: null) was unsuccessful
+##
+KAFKA_LISTENERS: INTERNAL://127.0.0.1:29092,EXTERNAL://0.0.0.0:9091
+KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-1:29092,EXTERNAL://localhost:9091
+KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+### Connection to node 1 (broker-1/192.168.96.5:29092) could not be established. Broker may not be available.
+### onnection to node 2 (broker-2/192.168.96.3:29092) could not be established. Broker may not be available. 
+### Connection to node 4 (broker-4/192.168.96.6:29092) could not be established. Broker may not be available
+
+## Connection to node 5 (broker-5/192.168.96.7:29092) could not be established. Broker may not be available.
+[2024-05-25 19:41:32,030] WARN [Controller id=4, targetBrokerId=4] Connection to node 4 (broker-4/192.168.96.6:29092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)
+[2024-05-25 19:41:32,030] WARN [Controller id=4, targetBrokerId=3] Connection to node 3 (broker-3/192.168.96.4:29092) could not be established. Broker may not be available. (org.apache.kafka.clients.NetworkClient)
+ Controller 4's connection to broker broker-3:29092 (id: 3 rack: null) was unsuccessful (kafka.controller.RequestSendThread)
+
+```
+
+Any of the below works
+```bash
+##  here we used the name of the container as the host name
+KAFKA_LISTENERS: INTERNAL://broker-5:29092,EXTERNAL://0.0.0.0:9095
+KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-5:29092,EXTERNAL://localhost:9095
+KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+
+
+### 192.168.8.3 is the address of the computer on the network
+KAFKA_LISTENERS: INTERNAL://broker-4:29092,EXTERNAL://0.0.0.0:9094
+KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-4:29092,EXTERNAL://192.168.8.3:9094
+KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+
+```
+
+
+
+### Interfaces
+In order to connect to the network, a computer must have at least one network interface
+Each network interface must have its own unique IP address. The IP address that you give to a host is assigned to its network interface
+If you add a second network interface to a machine, it must have its own unique IP number.
+
+localhost(lo interface)-> 127.0.0.1
+
+eth20(another interface)-> 192.168.9.3
+
+multiple interfaces means the computer can connect to different networks and in each network, it will have its own unique ip address
+
+A socket listens on a certain network interface, meaning the socket will only accept connections from that network
+`0.0.0.0` means listen on all interfaces on node
+
+Each network interface has a device name, device driver, and associated device file in the /devices directory. The network interface might have a device name, such as le0 or smc0, device names for two commonly used Ethernet interfaces.
+
+IP Addresses belong to network interfaces, not to the computer itself. You don't ping a computer, you ping a computer's network interface.
+Even if you ping 127.0.0.1 which is known as the loopback interface. So even that is known as an interface
+
+IPs aren't exactly assigned to devices, only to interfaces of devices
+
+if we bind a socket to 192.168.3.1 means it binds to this address and the address tells it which interface to activate and start listening on
+
+
+KAFKA_LISTENERS: Specifies the network interfaces and ports that the Kafka broker binds to for listening to connections.
+
+
+
+
+### Docker
+
+Bridge networks create a virtual bridge interface on the host and connect containers to it. 
+on mac an interface is created on the VM
+
+the mac has three ips
+- localhost
+- 192.168.8.13(router)
+- 192.168.64.1(bridge)
+### Bridge
+
+Creating network bridges allows you to connect multiple network interfaces together, enabling communication between devices connected to those interfaces.
+For example, you might create a bridge to connect a physical Ethernet interface (eth0) and a virtual interface used by a virtual machine or container (veth0). This setup enables the virtual machine or container to communicate directly with devices on the physical network.
+
+docker on mac 
+- A bridge device has been created called 'bridge100' (sequential from 100 if you start multiple vmnet types at once)
+
+- A vmenet device has been created for each VM requested, and then attached to the bridge
+- An internal macOS DHCP service (bootpd) has been started to assign IP addresses to each VM (and the bridge)
+```bash
+# some output omitted
+root@apple-host$ ifconfig
+...
+vmenet0: flags=8b63<UP,BROADCAST,SMART,RUNNING,PROMISC,ALLMULTI,SIMPLEX,MULTICAST> mtu 1500
+        ether aa:70:70:52:86:d4 
+        media: autoselect
+        status: active
+# bridge100 has IP 192.168.64.1 assigned
+# vmenet0 and vmenet1 are members
+bridge100: flags=8a63<UP,BROADCAST,SMART,RUNNING,ALLMULTI,SIMPLEX,MULTICAST> mtu 1500
+        options=3<RXCSUM,TXCSUM>
+        ether be:d0:74:61:f6:64 
+        inet 192.168.64.1 netmask 0xffffff00 broadcast 192.168.64.255
+        ...
+        Configuration:
+        ...
+        member: vmenet0 flags=3<LEARNING,DISCOVER>
+                ifmaxaddr 0 port 29 priority 0 path cost 0
+        member: vmenet1 flags=3<LEARNING,DISCOVER>
+                ifmaxaddr 0 port 31 priority 0 path cost 0
+        ...
+        status: active
+vmenet1: flags=8b63<UP,BROADCAST,SMART,RUNNING,PROMISC,ALLMULTI,SIMPLEX,MULTICAST> mtu 1500
+        ether b6:69:a5:54:74:45 
+        media: autoselect
+        status: active
+
+
+```
+#### Virtualization:
+
+In virtualization scenarios, bridges are commonly used to provide network connectivity to virtual machines. Virtual machine interfaces (e.g., veth interfaces) are added as members of the bridge, allowing them to communicate with the host system and other devices on the network.
+
+#### Network Segmentation:
+
+Bridges can be used to segment network traffic within a system. By creating multiple bridges and assigning different network interfaces to each bridge, you can isolate network traffic and control how data flows between different parts of the networ
+
+#### Docker and Containerization:
+
+ Docker creates bridge networks and adds container interfaces as members of those networks, allowing containers to communicate with each other and with devices on the host system or external network.
+
+
+ [Linux-network-bridging-and-network-namespaces](https://dev.to/stanleyogada/demystifying-linux-network-bridging-and-network-namespaces-19ap)
+
+ [network-namespace-with-bridge](https://medium.com/@bjnandi/linux-network-namespace-with-bridge-d68831d5e8a1)
+
+
+ [linux-networking-and-docker-bridge-veth-and-iptables](https://medium.com/techlog/diving-into-linux-networking-and-docker-bridge-veth-and-iptables-a05eb27b1e72)
+ [bridging-network-interfaces](https://www.baeldung.com/linux/bridging-network-interfaces)
+
+ A network bridge is a software device that connects multiple network interfaces together, making them act as if they are on the same physical network. In a virtualized environment, a bridge allows VMs to communicate with each other and with the external network
+
+ Attaching vnet Devices to a Bridge
+Once vnet devices are created, they need to be attached to a network bridge. This attachment allows the VMs to use the bridge’s network configuration to access the network.
+
+### VETH
+The VETH (virtual Ethernet) device is a local Ethernet tunnel. Devices are created in pairs,
+Packets transmitted on one device in the pair are immediately received on the other device.
+
+When a virtual machine (VM) is created, a virtual network interface, often named something like vnet0, vnet1, etc., is also created
+vnet interfaces are used to connect VMs to virtual bridges 
+The bridge on mac is connected to one vnet (Virtual Network)
+
+ip address: 192.168.1.1/24  means 192.168.1.1 ip address with subnet mask /24
+
+
+
+#### Creating a veth Pair
+
+```bash
+sudo ip link add veth0 type veth peer name veth1
+sudo ip link add veth2 type veth peer name veth3
+
+
+```
+
+ ### Attaching veth to the Bridge:
+
+ ```bash
+sudo brctl addif br0 veth0
+sudo brctl addif br0 veth2
+
+
+ ```
+
+
+#### Assigning veth1 to a VM or Namespace
+
+```bash
+sudo ip link set veth1 netns <vm-namespace>
+
+```
+
+#### Move veth Interfaces to VM Namespaces
+
+```bash
+sudo ip link set veth1 netns vm1
+sudo ip link set veth3 netns vm2
+
+
+```
+
+Assign IP Addresses
+
+```bash
+### bridge
+sudo ip addr add 192.168.1.1/24 dev br0
+sudo ip link set br0 up
+
+### VM1
+sudo ip netns exec vm1 ip addr add 192.168.1.2/24 dev veth1
+sudo ip netns exec vm1 ip link set veth1 up
+
+###VM2
+sudo ip netns exec vm2 ip addr add 192.168.1.3/24 dev veth3
+sudo ip netns exec vm2 ip link set veth3 up
+
+```
+
+
+### Creating a Bridge 
+
+```bash
+# Create the bridge
+sudo brctl addbr br0
+
+# Assign an IP address to the bridge (optional, for management purposes)
+sudo ip addr add 192.168.122.1/24 dev br0
+
+# Bring up the bridge
+sudo ip link set br0 up
+
+
+```
+
+#### Attaching a Physical Interface to the Bridge
+
+```bash
+# Attach the physical interface to the bridge
+#Optionally, you can attach a physical network interface to the bridge to allow external network access.
+sudo brctl addif br0 eth0
+
+# Bring up the physical interface
+sudo ip link set eth0 up
+
+```
+
+### Starting a VM and Creating vnet Devices
+
+
+```bash
+
+# Start the VM using virsh (libvirt tool)
+#When you start a VM using libvirt, it automatically creates a vnet device and attaches it to the bridge
+sudo virsh start my-vm
+
+# Check the network interfaces
+ip link show
+
+```
+
+
+##### Attaching vnet Devices to the Bridge
+
+```bash
+# he vnet devices are automatically attached to the bridge by libvirt. However, if you need to manually attach a vnet device to a bridge, you can use the following commands:
+
+# Attach vnet0 to the bridge
+sudo brctl addif br0 vnet0
+
+# Bring up the vnet interface
+sudo ip link set vnet0 up
+
+
+
+```
+
+
+
+On mac, if you ping   `host.docker.internal` and `gateway.docker.internal`,inside a container,you get 192.168.65.254( the subnet for docker,used by the VM)
+
+the address of the bridge is the dhcp_router(192.168.64.1), network address 192.168.64.0
+the VM also has an interface in the 92.168.64.0 network with ip address 92.168.64.23
+
+
+From Containers to VM: Containers can communicate with the VM using the default gateway, typically 172.17.0.1.
+From Containers to Host and External Network: Docker manages NAT (Network Address Translation), so containers can access external networks
+
+
+On macOS, you can enter the Docker VM and look around, using the below command.
+
+`docker run -it --rm --privileged --pid=host justincormack/nsenter1`
+
+
+on the VM, ` cat /proc/sys/net/ipv4/ip_forward` is 1, which means ip forward is enabled, which permits the host to act as a router
+
+`eth1`: This is the network interface associated with this route. It specifies the outgoing interface through which traffic destined for the `192.168.64.0/24` network will be sent.
+
+0.0.0.0: This is the gateway or next hop address. In this case, 0.0.0.0 means that the traffic is directly reachable on the local network (eth1), and no gateway is needed to reach this destination.
+
+run `netstat -rn` on the VM or route -n
+```bash
+Destination     Gateway     Genmask         Flags   MSS Window  irtt Iface
+127.0.0.0       0.0.0.0     255.0.0.0       U         0 0          0 lo
+172.17.0.0      0.0.0.0     255.255.0.0     U         0 0          0 docker0
+172.19.0.0      0.0.0.0     255.255.0.0     U         0 0          0 br-776969a2ffe7
+192.168.64.0    0.0.0.0     255.255.255.0   U         0 0          0 eth1
+192.168.65.0    0.0.0.0     255.255.255.0   U         0 0          0 eth0
+
+
+```
+
+for each container created in a bridge network, a veth interface is created. one end attached to the container and one to the bridge.
+
+if I created say 6 containers, for each, we would have a veth created and attached to the bridge
+we would also have an entry in the iptable of the VM
+```bash
+172.20.0.0      0.0.0.0         255.255.0.0     U         0 0          0 br-f66d810ac732
+
+```
+routing entry instructs the system to forward packets destined for the 1172.20.0.0/16  network out through the br-f66d810ac732 interface.
+
+Containers connected to the same bridge network can communicate with each other directly using their IP addresses or container names(only for custom bridges, not the default one ie docker0)
+
+The bridge itself (not a tap device at a port!) can get an IP address and may work as a standard Ethernet device. The host can communicate via this address with other guests attached to the bridge.
+
+```bash
+#brctl show br-776969a2ffe7
+bridge name	        bridge id		    STP enabled	interfaces
+br-776969a2ffe7		8000.02426d641ece	no
+#brctl show br-2e7aaa5f01a1
+## 6 veth for 6 containers
+bridge name	        bridge id		    STP enabled	   interfaces
+br-2e7aaa5f01a1		8000.024271dc5114	no		        veth83ce4c5
+                                                        veth005a31a
+                                                        veth23d6edd
+                                                        veth40c7d37
+                                                        vethcf29dfb
+                                                        veth7b1ebbb
+
+```
+When you attach a virtual network interface to a bridge, you're effectively connecting that virtual interface to the same network segment as the bridge
+
+network interface (eth1) configured with the IP address `192.168.64.23` within the `192.168.64.0/24`
+The system can communicate with other devices within the same subnet (`192.168.64.0/24`) via the eth1 interface, and the IP address `192.168.64.23` serves as the source address for outgoing packets from this interface.
+The VM's network interface (eth1 inside the VM) is connected to the VM's vnet device on the host
+
+The bridge interface (br0) on the host is configured with the IP address 192.168.64.1. This allows the host to communicate on the 192.168.64.0/24 subnet.
+
+One of the virtual network interfaces from the VM is a member of the bridge interface (br0). This means that the VM is connected to the same network segment (192.168.64.0/24) as the host via the bridge interface.
+When the host wants to communicate with the VM, it sends packets to the IP address of the VM within the 192.168.64.0/24 subnet. These packets are forwarded to the bridge interface (br0), which then forwards them to the virtual network interface of the VM.
+```bash
+10.5.0.0/16 dev br-2e7aaa5f01a1 scope link  src 10.5.0.1 
+127.0.0.0/8 dev lo scope host 
+172.17.0.0/16 dev docker0 scope link  src 172.17.0.1 
+172.19.0.0/16 dev br-776969a2ffe7 scope link  src 172.19.0.1 
+192.168.64.0/24 dev eth1 scope link  src 192.168.64.23 
+192.168.65.0/24 dev eth0 scope link 
+
+```
+
+
+```bash
+# command for managing Forwarding Database (FDB) entries in a Linux bridge 
+# This command shows the MAC addresses learned by the bridge and their associated ports.
+brctl showmacs br-2e7aaa5f01a1
+
+```
+
+
+[attach-the-host-and-connect-bridges-via-veth](https://linux-blog.anracom.com/2016/02/02/fun-with-veth-devices-linux-virtual-bridges-kvm-vmware-attach-the-host-and-connect-bridges-via-veth/)
+
+[docker-linux-networking-custom-interfaces](https://www.softwareab.net/wordpress/docker-linux-networking-custom-interfaces/)
+
+[fun-with-veth-network-namespaces-vlans-vi-veth-subdevices-for-802-1q-vlans](https://linux-blog.anracom.com/2024/03/21/more-fun-with-veth-network-namespaces-vlans-vi-veth-subdevices-for-802-1q-vlans/)
+
+[category/linux-container](https://linux-blog.anracom.com/category/linux-container/)
+
+[virtualisierung-kvm-xen](https://linux-blog.anracom.com/category/virtualisierung-kvm-xen/)
+
+[container-networking-from-scratch](https://labs.iximiuz.com/tutorials/container-networking-from-scratch)
+[network-namespaces-with-veth-to-nat-guests-with-overlapping-ips](https://blog.christophersmart.com/2020/03/15/using-network-namespaces-with-veth-to-nat-guests-with-overlapping-ips/)
+
+A network interface is the point of interconnection between a computer and a private or public network
+
+if we assign an ip to the bridge, it becomes a gateway
+Without the ip, the containers can communicate but no way for trafic out of the bridge
+
+```bash
+kafka-console-producer.sh --bootstrap-server localhost:9092 --topic test_topic_2
+
+kafka-console-consumer.sh --bootstrap-server localhost:9092 --topic test_topic_2
+
+```
+
+the above works for all three interfaces(localhost,192.168.8.133,192.168.64.1) 
+
+Now I changed to 
+
+```bash     
+KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://192.168.8.133:9091
+KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-1:29092,EXTERNAL://192.168.8.133:9091
+
+```
+
+it produces this error`Socket server failed to bind to 192.168.8.133:9094: Cannot assign requested address.` because the container does not have an interface with this ip`. The container most likely has two interfaces, eth0(from veth, attached to custom bridge) and lo. This means the cluster is not created
+
+If I give each container a static ip, rather a dynamic one, i can use this ip and the cluster starts as the container can open a socket and listen on the interface it has
+
+```bash
+networks:
+    kafka-networks:
+    ipv4_address: 10.5.0.3 
+environment:      
+ KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://10.5.0.3:9093
+ KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-3:29092,EXTERNAL://192.168.8.133:9093
+
+
+networks:
+   kafka-networks:
+     driver: bridge
+     name: kafka-networks
+     external: false #to use an existing network 
+     ipam:
+      config:
+        - subnet: 10.5.0.0/16
+           gateway: 10.5.0.1 
+```
+
+The above works and we can start a producer by connnecting to the ip address of the host(Mac) on the network.
+```bash
+kafka-console-producer.sh --bootstrap-server 192.168.8.133:9092 --topic test_topic_2
+```
+
+`KAFKA_ADVERTISED_LISTENERS: external clients to reach this IP`
+The container has an internal IP `10.5.0.3`, and Kafka listens on port `9093` inside the container. We then use port mapping to container port 9093 to 192.168.8.133:9093
+
+Port `9093` on `192.168.8.133` is mapped to port `9093` on the container’s internal IP (`10.5.0.3`), allowing external clients to access Kafka running inside the container via the host's IP
+
+Internal communication is handled via the Docker bridge network
+
+`KAFKA_LISTENERS` are interfaces on the host the host can listen on(for containers, we have loopback and one for each network the container is attached to two..here we have two interfaces)
+
+```bash
+KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://broker-5:9095
+KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-5:29092,EXTERNAL://192.168.8.133:9095
+
+or
+KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://broker-3:9093
+KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-3:29092,EXTERNAL://192.168.64.1:9093
+
+KAFKA_LISTENERS: INTERNAL://0.0.0.0:29092,EXTERNAL://broker-3:9093
+KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-3:29092,EXTERNAL://localhost:9093
+
+```
+The above works as well because of docker dns(hence no need for static ip addresses to be assigned to containers..we just use container name)
+
+
+Container Name: Used to manage and interact with the container via Docker CLI.
+Hostname: Used for networking and service discovery within Docker networks.
+
+Container Name: Must be unique within a Docker host.
+Hostname: Can be the same as other containers, but typically unique within a specific network for clarit
+
+
+
+By default, the container gets an IP address for every Docker network it attaches to. A container receives an IP address out of the IP subnet of the network. The Docker daemon performs dynamic subnetting and IP address allocation for containers. Each network also has a default subnet mask and gateway.
+
+ontainers use the same DNS servers as the host by default,
+By default, containers inherit the DNS settings as defined in the /etc/resolv.conf configuration file. Containers that attach to the default bridge network receive a copy of this file. Containers that attach to a custom network use Docker's embedded DNS server.The embedded DNS server forwards external DNS lookups to the DNS servers configured on the host.
+
+[use-user-defined-bridge-networks](https://docs.docker.com/network/network-tutorial-standalone/#use-user-defined-bridge-networks)
+
+
+## Process
+A process is the execution of a program. It includes the program itself, data, resources such as files, and execution info such as process relation information kept by the OS
+
+A thread is a semi-process. It has its own stack and executes a given piece of code. Unlike a real process, the thread normally shares its memory with other threads. Conversely, processes usually have a different memory area for each one of them.
+
+Processes are unique in that they don’t share data and information; they’re isolated execution entities. In short, a process has its own stack, memory, and data.
+
+There are two main things that are isolated by default for processes:
+- A process gets its own memory space.
+- A process has restricted privileges. A process gets the same privileges as the user that created the process.
+
+A container is an isolated group of processes that are restricted to a private root filesystem and process namespace.
+
+`A namespace wraps a global system resource in an abstraction that makes it appear to the processes within the namespace that they have their own isolated instance of the global resource.`
+
+- cgroups — isolates the root directory
+- IPC — isolates interprocess communication
+- Network — isolates the network stack
+- Mount — isolates mount points
+- PID — isolates process IDs
+- User — isolates User and Group IDs
+- UTS — isolates hostnames and domain name
+
+Network namespaces provide isolation of the system resourcesassociated with networking: network devices, IPv4 and IPv6
+protocol stacks, IP routing tables, firewall rules, the /proc/net
+directory (which is a symbolic link to /proc/pid/net), the
+/sys/class/net directory, various files under /proc/sys/net, port
+numbers (sockets), and so on
+
+
+A virtual network (veth(4)) device pair provides a pipe-like
+abstraction that can be used to create tunnels between network
+namespaces, and can be used to create a bridge to a physical
+network device in another namespace.  When a namespace is freed,
+the veth(4) devices that it contains are destroyed.
+
+
+Packets transmitted on one device in the pair are immediately
+received on the other device.  When either device is down, the
+link state of the pair is down
+
+A particularly
+interesting use case is to place one end of a veth pair in one
+network namespace and the other end in another network namespace,
+thus allowing communication between network namespaces.  To do
+this, one can provide the netns parameter when creating the
+interfaces:
+
+`ip link add <p1-name> netns <p1-ns> type veth peer <p2-name> netns <p2-ns>`
+
+or, for an existing veth pair, move one side to the other
+       namespace:
+`ip link set <p2-name> netns <p2-ns>`
+
+`ip` - show / manipulate routing, network devices, interfaces and
+       tunnels
+       
+
+- netns  - manage network namespaces
+- tunnel - tunnel over IP.
+
+- tuntap - manage TUN/TAP devices.
+- link   - network device.       
+
+`/bin/zsh`,`/bin/bash` and `/bin/sh`
+
+[connecting-two-network-namespace-with-veth](https://medium.com/@nobelrakib03/connecting-two-network-namespace-with-veth-cable-f3bdd71e885e#:~:text=Understanding%20veth%20and%20network%20namespace,default%20namespace%20or%20another%20network)
+
+Network Bridges: Interfaces without IPs are commonly used in network bridges. A bridge connects multiple network segments at the data link layer (Layer 2). The interfaces involved in the bridge do not require IP addresses as they are not meant to communicate directly at the network layer (Layer 3)
+
+```bash
+# Create a bridge
+brctl addbr br0
+
+# Add interfaces to the bridge without assigning IPs
+brctl addif br0 eth0
+brctl addif br0 eth1
+
+# Assign an IP address to the bridge itself
+ip addr add 192.168.1.100/24 dev br0
+
+# Bring up the bridge and interfaces
+ip link set dev br0 up
+ip link set dev eth0 up
+ip link set dev eth1 up
+
+
+```
+
+VLAN Interfaces: When creating VLAN (Virtual Local Area Network) interfaces, the underlying physical interface might not need an IP address. The VLAN interfaces themselves will have IP addresses, while the physical interface serves as a trunk carrying traffic for multiple VLANs.
+
+```bash
+# Create VLAN interfaces
+ip link add link eth0 name eth0.10 type vlan id 10
+ip link add link eth0 name eth0.20 type vlan id 20
+
+# Assign IP addresses to VLAN interfaces
+ip addr add 192.168.10.1/24 dev eth0.10
+ip addr add 192.168.20.1/24 dev eth0.20
+
+# Bring up the VLAN interfaces
+ip link set dev eth0.10 up
+ip link set dev eth0.20 up
+
+
+
+```
+
+Link Aggregation: In link aggregation (bonding), multiple network interfaces are combined to act as a single interface for redundancy or increased throughput. The individual interfaces in the bond do not require IP addresses; the bonded interface itself will have an IP address.
+
+```bash
+ip link add bond0 type bond
+ip link set dev eth0 master bond0
+ip link set dev eth1 master bond0
+ip addr add 192.168.1.2/24 dev bond0
+
+
+```
+
+When an interface has no IP address assigned, it functions primarily at Layer 2 of the OSI model, dealing with Ethernet frames rather than IP packets.
+
+
+#### Consumer Group
+
+When we instantiate a consumer group, Kafka also creates the group coordinator. The group coordinator regularly receives requests from the consumers, known as heartbeats. If a consumer stops sending heartbeats, the coordinator assumes that the consumer has either left the group or crashed. That’s one possible trigger for a partition rebalance
+
+
+The first consumer who requests the group coordinator to join the group becomes the group leader
+A Coordinator is a broker while a group leader is a consumer
+
+If a consumer stops sending heartbeats, the coordinator will trigger a rebalance
+
+The group leader  uses an implementation of the PartitionAssignor interface to decide which partitions should be handled by which consumer.
+
+
+It is the Zookeeper that performs the election of the Kafka controller. The controller is the Kafka broker responsible for defining who will be the broker leader of each partition and which will be the followers
+
+Zookeeper also stores the list of existing topics, the number of partitions for each topic, the location of replicas, and ACLs (permissions).
+
+
+```bash
+kadmin				      
+ kafka-acls			      
+ kafka-broker-api-versions	      
+ kafka-cluster			      
+ kafka-configs			      
+ kafka-console-consumer		      
+ kafka-console-producer		      
+ kafka-consumer-groups		      
+ kafka-consumer-perf-test	      
+ kafka-delegation-tokens	     
+ kafka-delete-records		      
+ kafka-dump-log			      
+ kafka-e2e-latency		     
+ kafka-features			     
+ kafka-get-offsets		    
+ kafka-jmx			     
+ kafka-leader-election		     
+ kafka-log-dirs			      
+ kafka-metadata-quorum		     
+ kafka-metadata-shell		      
+ kafka-mirror-maker		     
+ kafka-preferred-replica-election     
+ kafka-producer-perf-test	      
+ kafka-reassign-partitions	     
+ kafka-replica-verification	      
+ kafka-run-class		      
+ kafka-server-start		   
+ kafka-server-stop		      
+ kafka-storage			      
+ kafka-streams-application-reset      
+ kafka-topics			      
+ kafka-transactions		      
+ kafka-verifiable-consumer	      
+ kafka-verifiable-producer
+ zookeeper-security-migration
+ zookeeper-server-start
+ zookeeper-server-stop
+ zookeeper-shell
+
+
+```
+
+```bash
+# docker exec -it zookeeper bash
+kafka-broker-api-versions --bootstrap-server broker-1:29092
+kafka-cluster --cluster-id
+kafka-get-offsets --bootstrap-server broker-1:29092 --list
+	
+kafka-topics --bootstrap-server broker-1:29092 --list
+
+kafka-topics --bootstrap-server broker-1:29092 --describe --topic topic-C
+
+```
+```bash
+kafka-topics --bootstrap-server broker-1:29092 --describe --topic __consumer_offsets
+### result
+Topic: __consumer_offsets	Partition: 0	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 1	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 2	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 3	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 4	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 5	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 6	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 7	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 8	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 9	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 10	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 11	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 12	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 13	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 14	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 15	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 16	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 17	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 18	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 19	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 20	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 21	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 22	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 23	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 24	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 25	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 26	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 27	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 28	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 29	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 30	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 31	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 32	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 33	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 34	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 35	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 36	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 37	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 38	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 39	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 40	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 41	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 42	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 43	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 44	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 45	Leader: 4	Replicas: 4	Isr: 4
+Topic: __consumer_offsets	Partition: 46	Leader: 1	Replicas: 1	Isr: 1
+Topic: __consumer_offsets	Partition: 47	Leader: 3	Replicas: 3	Isr: 3
+Topic: __consumer_offsets	Partition: 48	Leader: 5	Replicas: 5	Isr: 5
+Topic: __consumer_offsets	Partition: 49	Leader: 4	Replicas: 4	Isr: 4
+
+```
+
+```bash
+## docker exec -it zookeeper bash zookeeper-shell zookeeper:2181
+Connecting to zookeeper:2181
+Welcome to ZooKeeper!
+JLine support is disabled
+
+WATCHER::
+
+WatchedEvent state:SyncConnected type:None path:null
+get /controller
+{"version":2,"brokerid":5,"timestamp":"1717009042755","kraftControllerEpoch":-1}
+
+```
+
+`preferred leaders` — the broker nodes which were the original leaders for their partitions
+
+Leader brokers never return messages which have not been replicated to all ISRs. Brokers keep track of the so-called high watermark offset — the largest offset which all in-sync replicas have. By returning messages no greater than the high watermark to the consumer, Kafka ensures that consistency is maintained and that non-repeatable reads cannot happen
+
+The first broker that starts in the cluster
+becomes the controller by creating an ephemeral node in ZooKeeper called /control
+ler
+The brokers create a Zoo‐
+keeper watch on the controller node so they get notified of changes to this node. This
+way, we guarantee that the cluster will only have one controller at a time.
+
+Each time a controller
+is elected, it receives a new, higher controller epoch number through a Zookeeper con‐ditional increment operation. The brokers know the current controller epoch and if
+they receive a message from a controller with an older number, they know to ignore
+it.
+
+
+
+ GroupCoordinator handles general group membership and offset management.
+ Each Kafka server instantiates a coordinator which is responsible for a set of groups. Groups are assigned to coordinators based on their group names.
+
+
+ Kafka brokers use an internal topic named `__consumer_offsets` that keeps track of what messages a given consumer group last successfully processed
+
+ The process of committing offsets is not done for every message consumed (because this would be inefficient), and instead is a periodic process.
+
+This also means that when a specific offset is committed, all previous messages that have a lower offset are also considered to be committed.
+
+### Why use Consumer Offsets?
+Offsets are critical for many applications. If a Kafka client crashes, a rebalance occurs and the latest committed offset help the remaining Kafka consumers know where to restart reading and processing messages.
+
+In case a new consumer is added to a group, another consumer group rebalance happens and consumer offsets are yet again leveraged to notify consumers where to start reading data from.
+
+Therefore consumer offsets must be committed regularly.
+
+
+### KRaft
+The quorum controller uses an event log to store the state, which is periodically abridged to snapshots to prevent it from growing indefinitely:
+
+Kraft -uses Kafka to store metadata and an event-driven pattern to make updates across the nodes
+
+[kraft](https://strimzi.io/blog/2024/03/21/kraft-migration/)
+
+
+`commitBatchWithin`
+commits only the last seen entry. This is allowed since the partitions are locally ordered (look into logical clocks for more info) (ordered per groupable key, based on the partitioning strategy). If for some message `a` with offset `k` and another message `b` with offset `n` occur where `k < n`, then a occurs before `b`, that is, letting kafka know that you have handled `b` must imply that you also handled `a`, since every message is locally ordered
+
+`CommittableConsumerRecord` is the consumed record
+The consumed record has an CommittableOffset which has a commit method
+
+ProducerRecords have 0 or more records, that are the records derived from some consumed record with a CommitableOffset
+
+`passthrough` producer side,
+
+
+
+`PartitionAssignor` is the class that decides which partitions will be assigned to which consumer. When creating a new Kafka consumer, we can configure the strategy that will be used to assign the partitions amongst the consumers. We can set it using the configuration partition.assignment.strategy. 
+
+All the Kafka consumers which belong to the same consumer group must have a single assignment strategy. If a consumer attempts to join a consumer group that has a different assignment strategy, it will end up getting an `InconsistentGroupProtocolException`.
