@@ -7,7 +7,7 @@ version := "1.0"
 
 val logbackVersion       = "1.4.11"
 val log4catsVersion      = "2.6.0"
-val fs2KafkaVersion      = "3.1.0"
+val fs2KafkaVersion      = "3.5.1"
 lazy val javaMailVersion = "1.6.2"
 
 val fs2Kafka = "com.github.fd4s" %% "fs2-kafka" % fs2KafkaVersion
