@@ -6,7 +6,7 @@ name    := "fs-kafka-example"
 version := "1.0"
 
 val logbackVersion       = "1.4.11"
-val log4catsVersion      = "2.6.0"
+val log4catsVersion      = "2.7.0"
 val fs2KafkaVersion      = "3.1.0"
 lazy val javaMailVersion = "1.6.2"
 
