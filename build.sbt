@@ -1,6 +1,6 @@
 // The simplest possible sbt build file is just one line:
 
-scalaVersion := "2.13.12"
+scalaVersion := "2.13.13"
 
 name    := "fs-kafka-example"
 version := "1.0"
