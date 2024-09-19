@@ -36,6 +36,15 @@ final class Consumer[F[_]: Async: Logger](
 
   }
 
+  import cats.data.NonEmptySet
+
+  /**
+    * To use this mode, instead of subscribing to the topic using
+    * {@link #subscribe(Collection) subscribe} , you just call {@link #assign(Collection)} with the
+    * full list of partitions that you want to consume.
+    */
+  consumer.assign("mytopic", NonEmptySet.of(1, 2, 3))
+
 }
 
 object Consumer {

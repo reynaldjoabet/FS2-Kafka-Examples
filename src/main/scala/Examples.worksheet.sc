@@ -63,3 +63,14 @@ KafkaConsumer
 // I sleep 3000 seconds for CommittableOffset(test_topic-0 -> 2, test_consumer_group)
 // I sleep 0 seconds for CommittableOffset(test_topic-0 -> 3, test_consumer_group) Offset after: CommittableOffset(test_topic-0 -> 3, test_consumer_group) Committing an offset
 // Offset after: CommittableOffset(test_topic-0 -> 2, test_consumer_group) Committing an offset
+
+'\u2017'
+'\u2018'
+'\u2019'
+'\u02C8'
+
+"Burke’Macon".replace('\u2019', 'n')
+
+"Burke’Macon".replace('\u2019', '\u02C8')
+
+'\''
